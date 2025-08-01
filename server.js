@@ -10,6 +10,12 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
+// Optional health check route
+app.get("/", (req, res) => {
+  res.send("Backend is running.");
+});
+
+// Setup clients
 const twilioClient = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH);
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -21,7 +27,7 @@ app.post("/send-otp", async (req, res) => {
     await twilioClient.verify
       .v2.services(process.env.TWILIO_VERIFY_SID)
       .verifications.create({
-        to: phone, // e.g. +263771234567
+        to: phone,
         channel: "sms",
       });
 
@@ -42,16 +48,14 @@ app.post("/verify-otp", async (req, res) => {
       .verificationChecks.create({ to: phone, code });
 
     if (verification_check.status === "approved") {
-      // Check if user exists in Supabase
       let { data: user } = await supabase
         .from("users")
         .select("*")
         .eq("phone", phone)
         .single();
 
-      // Create user if not exists
       if (!user) {
-        const { data: newUser, error } = await supabase
+        const { data: newUser } = await supabase
           .from("users")
           .insert([{ phone }])
           .select()
@@ -59,10 +63,11 @@ app.post("/verify-otp", async (req, res) => {
         user = newUser;
       }
 
-      // Create JWT
-      const token = jwt.sign({ user_id: user.id, phone }, process.env.JWT_SECRET, {
-        expiresIn: "7d",
-      });
+      const token = jwt.sign(
+        { user_id: user.id, phone },
+        process.env.JWT_SECRET,
+        { expiresIn: "7d" }
+      );
 
       res.json({ verified: true, token });
     } else {
@@ -74,4 +79,6 @@ app.post("/verify-otp", async (req, res) => {
   }
 });
 
-app.listen(4000, () => console.log("API running on http://localhost:4000"));
+// Dynamic port for Render
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => console.log(`API running on port ${PORT}`));
